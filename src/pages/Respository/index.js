@@ -6,7 +6,7 @@ import PropTypes from 'prop-types';
 import api from '../../services/api';
 
 import Container from '../../components/Container';
-import { Loading, Owner } from './styles';
+import { Loading, Owner, IssueList, Filter, Pagination } from './styles';
 
 export default class Repository extends Component {
   static propTypes = {
@@ -21,10 +21,17 @@ export default class Repository extends Component {
     repository: {},
     issues: [],
     loading: true,
+    stateIssues: 'open',
+    page: 1,
   };
 
   async componentDidMount() {
+    await this.handleRepositoryData();
+  }
+
+  handleRepositoryData = async () => {
     const { match } = this.props;
+    const { stateIssues, page } = this.state;
 
     const repoName = decodeURIComponent(match.params.repository);
 
@@ -32,8 +39,9 @@ export default class Repository extends Component {
       api.get(`/repos/${repoName}`),
       api.get(`/repos/${repoName}/issues`, {
         params: {
-          state: 'open',
-          per_page: 5,
+          state: stateIssues,
+          per_page: 10,
+          page,
         },
       }),
     ]);
@@ -43,23 +51,87 @@ export default class Repository extends Component {
       issues: issues.data,
       loading: false,
     });
-  }
+  };
+
+  handleIssuesStates = async state => {
+    await this.setState({ stateIssues: state, page: 1 });
+    await this.handleRepositoryData();
+  };
+
+  handlePagination = async newPage => {
+    const { page, issues } = this.state;
+
+    if (newPage === 'back' && page === 1) return;
+
+    if (newPage === 'next' && issues.length < 10) return;
+
+    await this.setState({
+      page: newPage === 'back' ? page - 1 : page + 1,
+    });
+
+    await this.handleRepositoryData();
+  };
 
   render() {
-    const { repository, issues, loading } = this.state;
-
+    const { repository, issues, loading, page } = this.state;
     if (loading) {
       return <Loading>Carregando</Loading>;
     }
 
     return (
       <Container>
+        <Filter>
+          <button
+            type="button"
+            disabled={page === 1}
+            onClick={() => this.handleIssuesStates('all')}
+          >
+            Todas
+          </button>
+          <button type="button" onClick={() => this.handleIssuesStates('open')}>
+            Abertas
+          </button>
+          <button
+            type="button"
+            onClick={() => this.handleIssuesStates('closed')}
+          >
+            Fechadas
+          </button>
+        </Filter>
         <Owner>
-          <Link to="/"> Voltar aos repositórios </Link>
+          <Link to="/">Voltar aos repositórios</Link>
           <img src={repository.owner.avatar_url} alt={repository.owner.login} />
           <h1>{repository.name}</h1>
           <p>{repository.description}</p>
         </Owner>
+
+        <IssueList>
+          {issues.map(issue => (
+            <li key={String(issue.id)}>
+              <img src={issue.user.avatar_url} alt={issue.user.login} />
+              <div>
+                <strong>
+                  <a href={issue.html_url} target="_blank">
+                    {issue.title}
+                    {issue.labels.map(label => (
+                      <span key={String(label.id)}>{label.name}</span>
+                    ))}
+                  </a>
+                </strong>
+                <p>{issue.user.login}</p>
+              </div>
+            </li>
+          ))}
+        </IssueList>
+        <Pagination>
+          <button type="button" onClick={() => this.handlePagination('back')}>
+            Anterior
+          </button>
+          <span>{`Pagina: ${page}`}</span>
+          <button type="button" onClick={() => this.handlePagination('next')}>
+            Proximo
+          </button>
+        </Pagination>
       </Container>
     );
   }
